@@ -18,9 +18,11 @@ npm: `npm i @ab6162/shy-mouse-playwright`
 
 Using this package is quite easy; you just need to call it and pass a Page. Available methods:
 
-- **`click(element, options)`** - Click on an element with human-like movement
+Note: methods expect Playwright Locators, not selector strings.
+
+- **`click(element, options)`** - Click on a Playwright Locator with human-like movement
 - **`move(options)`** - Generate a random movement across the viewport
-- **`scrollToElement(element, options)`** - Scroll to bring an element into view (also called automatically by click)
+- **`scrollToElement(element, options)`** - Scroll to bring a Locator into view (also called automatically by click)
 - **`moveToPosition(x, y, options)`** - Move to specific coordinates
 - **`getMovementStats()`** - Get statistics about movement patterns (useful for debugging)
 - **`reset()`** - Reset internal state (fatigue, attention span, motion tracking)
@@ -47,7 +49,8 @@ const MouseHelper = require('@ab6162/shy-mouse-playwright');
 	const mouseHelper = new MouseHelper(page);
 
 	// Click on an element (automatically scrolls if needed)
-	await mouseHelper.click('button#myButton', {
+	const button = page.locator('button#myButton');
+	await mouseHelper.click(button, {
 		clickPadding: 0.7,
 		viewPadMin: 30,
 		viewPadMax: 80
@@ -57,7 +60,7 @@ const MouseHelper = require('@ab6162/shy-mouse-playwright');
 	await mouseHelper.move();
 
 	// Scroll to element without clicking
-	const element = await page.$('footer');
+	const element = page.locator('footer');
 	await mouseHelper.scrollToElement(element, {
 		targetPosition: 'center',
 		overshootProb: 0.2
@@ -67,7 +70,8 @@ const MouseHelper = require('@ab6162/shy-mouse-playwright');
 	await mouseHelper.moveToPosition(500, 300);
 
 	// Another click
-	await mouseHelper.click('a#nextLink');
+	const nextLink = page.locator('a#nextLink');
+	await mouseHelper.click(nextLink);
 
 	// Get stats (optional, for debugging)
 	const stats = mouseHelper.getMovementStats();
