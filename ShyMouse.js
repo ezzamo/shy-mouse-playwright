@@ -9,6 +9,17 @@ class ShyMouse {
     this.viewportCacheTime = 0;
     this.viewportCacheDuration = 2000;
 
+    // Advanced motion state tracking (2025+ research)
+    this.motionState = {
+      lastVelocity: { x: 0, y: 0 },
+      lastAcceleration: { x: 0, y: 0 },
+      lastJerk: { x: 0, y: 0 },
+      temporalCorrelation: 0.5,
+      entropyAccumulator: 0,
+      perlinSeed: Math.random() * 10000,
+      pollingPhase: Math.random(),
+    };
+
     // Research-based configuration
     this.config = {
       // Fatigue system (coherent: everything slows down)
@@ -28,7 +39,7 @@ class ShyMouse {
       curveComplexity: options.curveComplexity ?? 'high',
       debug: options.debug ?? false,
 
-      // Human behavior patterns
+      // Human behavior patterns (2025+ enhanced)
       hesitationProbability: 0.08,
       microCorrectionFrequency: 0.15,
       targetDriftEnabled: true,
@@ -37,6 +48,15 @@ class ShyMouse {
       minPollingInterval: 6.9, // 144Hz
       maxPollingInterval: 16.6, // 60Hz
       typicalPollingInterval: 10, // ~100Hz (most common)
+
+      // Fitts's Law parameters (empirical research 2020-2025)
+      fittsA: 0.230, // Intercept (reaction/processing time in seconds)
+      fittsB: 0.166, // Slope (movement time coefficient)
+
+      // Advanced entropy and fractal parameters
+      fractalDepth: 3,
+      entropyTarget: 0.65, // Target entropy for natural unpredictability
+      jerkSmoothness: 0.85, // How smooth jerk transitions are (0-1)
     };
 
     this.setupNavigationListener();
@@ -1151,7 +1171,7 @@ class ShyMouse {
   }
 
   /**
-   * CRITICAL: Ultra-realistic movement with 60-144Hz polling simulation
+   * CRITICAL: Ultra-realistic movement with 60-144Hz polling simulation (2025+ enhanced)
    */
   async moveToPosition(targetX, targetY, options = {}) {
     const viewport = await this.getViewport();
@@ -1163,7 +1183,7 @@ class ShyMouse {
     targetX = this.clamp(targetX, 0, viewport.width - 1);
     targetY = this.clamp(targetY, 0, viewport.height - 1);
 
-    const { points, targetDrift } = this.calculateHumanBezierPoints(
+    const { points, targetDrift, velocityProfile } = this.calculateHumanBezierPoints(
       this.lastPos.x,
       this.lastPos.y,
       targetX,
@@ -1173,15 +1193,48 @@ class ShyMouse {
       options
     );
 
-    // Execute with realistic polling rate
+    // Track motion derivatives for realistic physics
+    let lastPoint = this.lastPos;
+    let lastVelocity = this.motionState.lastVelocity;
+    let lastAcceleration = this.motionState.lastAcceleration;
+
+    // Execute with realistic polling rate and motion physics
     for (let i = 0; i < points.length; i++) {
       let point = points[i];
 
-      // Target drift
+      // Target drift with fractal noise
       if (targetDrift && i > points.length * 0.5) {
         const driftFactor = (i - points.length * 0.5) / (points.length * 0.5);
-        point.x += targetDrift.x * driftFactor;
-        point.y += targetDrift.y * driftFactor;
+        const fractalNoise = this.perlinNoise(i * 0.1, Date.now() * 0.001, this.motionState.perlinSeed);
+        point.x += targetDrift.x * driftFactor + fractalNoise * 0.5;
+        point.y += targetDrift.y * driftFactor + fractalNoise * 0.5;
+      }
+
+      // Calculate realistic motion derivatives
+      const velocity = {
+        x: point.x - lastPoint.x,
+        y: point.y - lastPoint.y,
+      };
+
+      const acceleration = {
+        x: velocity.x - lastVelocity.x,
+        y: velocity.y - lastVelocity.y,
+      };
+
+      const rawJerk = {
+        x: acceleration.x - lastAcceleration.x,
+        y: acceleration.y - lastAcceleration.y,
+      };
+
+      // Smooth jerk (humans can't make instant acceleration changes)
+      const jerk = this.calculateSmoothJerk(this.motionState.lastJerk, rawJerk);
+
+      // Apply jerk-influenced micro-adjustments
+      const jerkMagnitude = Math.sqrt(jerk.x * jerk.x + jerk.y * jerk.y);
+      if (jerkMagnitude > 0.5) {
+        const jerkNoise = this.randomGaussian(0, jerkMagnitude * 0.15);
+        point.x += jerkNoise;
+        point.y += jerkNoise;
       }
 
       point.x = this.clamp(point.x, 0, viewport.width - 1);
@@ -1194,22 +1247,36 @@ class ShyMouse {
         continue;
       }
 
-      // REALISTIC POLLING RATE: 60-144Hz (6.9-16.6ms)
+      // REALISTIC POLLING RATE with temporal correlation
       const phase = i / points.length;
-      let pollingDelay = this.calculateRealisticPollingDelay(phase);
+      let pollingDelay = this.calculateRealisticPollingDelay(phase, velocityProfile ? velocityProfile[i] : 1);
 
       // Apply fatigue to timing
       pollingDelay *= this.config.fatigueMultiplier;
 
       await this.randomDelay(pollingDelay, pollingDelay + 2);
 
-      // Hesitation
-      if (Math.random() < this.config.hesitationProbability && phase > 0.2 && phase < 0.8) {
+      // Hesitation with entropy consideration
+      const currentEntropy = this.calculateEntropy(points.slice(Math.max(0, i - 5), i + 1));
+      const hesitationProb = this.config.hesitationProbability * (1 + (this.config.entropyTarget - currentEntropy));
+
+      if (Math.random() < hesitationProb && phase > 0.2 && phase < 0.8) {
         const hesitationDuration = this.randomGaussian(80, 40) * this.config.fatigueMultiplier;
         await this.randomDelay(Math.max(30, hesitationDuration), hesitationDuration + 50);
-        this.log('Hesitation at', phase.toFixed(2));
+        this.log('Hesitation at', phase.toFixed(2), 'entropy:', currentEntropy.toFixed(3));
       }
+
+      // Update motion state
+      lastPoint = point;
+      lastVelocity = velocity;
+      lastAcceleration = acceleration;
+      this.motionState.lastJerk = jerk;
     }
+
+    // Update motion state for temporal correlation
+    this.motionState.lastVelocity = lastVelocity;
+    this.motionState.lastAcceleration = lastAcceleration;
+    this.motionState.temporalCorrelation = Math.min(0.9, this.motionState.temporalCorrelation + 0.05);
 
     this.lastPos = { x: targetX, y: targetY };
     this.lastMoveTime = Date.now();
@@ -1217,48 +1284,72 @@ class ShyMouse {
   }
 
   /**
-   * Calculate realistic polling delay (60-144Hz simulation)
+   * Calculate realistic polling delay with temporal correlation (2025+ enhanced)
    */
-  calculateRealisticPollingDelay(phase) {
-    // Typical distribution: most events at ~100Hz (10ms)
-    // With occasional faster (144Hz) or slower (60Hz) bursts
+  calculateRealisticPollingDelay(phase, velocityFactor = 1) {
+    // Temporal correlation: events are correlated with previous polling intervals
+    const correlation = this.motionState.temporalCorrelation;
+    const pollingPhase = this.motionState.pollingPhase;
 
     let baseDelay;
 
-    const random = Math.random();
+    // Correlated randomness (not pure random)
+    const correlatedRandom = Math.random() * (1 - correlation) + pollingPhase * correlation;
+    this.motionState.pollingPhase = correlatedRandom; // Update for next call
 
-    if (random < 0.7) {
-      // 70% typical rate: ~100Hz (8-12ms)
-      baseDelay = this.config.typicalPollingInterval + (Math.random() - 0.5) * 4;
-    } else if (random < 0.85) {
-      // 15% faster: ~125-144Hz (6.9-8ms)
-      baseDelay = this.config.minPollingInterval + Math.random() * 2;
+    if (correlatedRandom < 0.65) {
+      // 65% typical rate: ~100Hz (9-11ms)
+      baseDelay = this.config.typicalPollingInterval + this.randomGaussian(0, 1.5);
+    } else if (correlatedRandom < 0.82) {
+      // 17% faster: ~120-144Hz (6.9-8.5ms)
+      baseDelay = this.config.minPollingInterval + Math.random() * 1.6;
     } else {
-      // 15% slower: ~60-80Hz (12.5-16.6ms)
-      baseDelay = 12.5 + Math.random() * 4;
+      // 18% slower: ~60-85Hz (11.8-16.6ms)
+      baseDelay = 11.8 + Math.random() * 4.8;
     }
 
-    // Phase modulation: slightly faster during cruise phase
+    // Phase modulation: velocity-dependent timing (Fitts's Law influence)
     if (phase > 0.3 && phase < 0.7) {
-      baseDelay *= 0.9; // 10% faster in cruise
+      // Cruise phase: faster polling during fast movement
+      baseDelay *= 0.88 * velocityFactor;
     } else if (phase > 0.85) {
-      baseDelay *= 1.2; // 20% slower near target (precision)
+      // Precision phase: slower, more deliberate
+      baseDelay *= 1.25;
+    } else if (phase < 0.15) {
+      // Acceleration phase: variable timing
+      baseDelay *= 0.95 + Math.random() * 0.15;
     }
 
-    // Micro-variation (sensor noise simulation)
-    baseDelay += (Math.random() - 0.5) * 1;
+    // Entropy-based micro-variation (fractal-like)
+    const entropyNoise = this.perlinNoise(
+      Date.now() * 0.01,
+      this.motionState.entropyAccumulator,
+      this.motionState.perlinSeed
+    );
+    baseDelay += entropyNoise * 1.2;
+    this.motionState.entropyAccumulator += 0.1;
+
+    // Physiological limits: can't be perfectly regular
+    baseDelay += Math.sin(Date.now() * 0.01) * 0.5;
 
     return this.clamp(baseDelay, this.config.minPollingInterval, this.config.maxPollingInterval);
   }
 
   /**
-   * Calculate ultra-realistic Bezier points
+   * Calculate ultra-realistic Bezier points with Fitts's Law timing (2025+ enhanced)
    */
   calculateHumanBezierPoints(startX, startY, targetX, targetY, box, viewport, options) {
     const D = this.calculateDistance({ x: startX, y: startY }, { x: targetX, y: targetY });
 
     const W = box ? Math.min(box.width, box.height) : (options.defaultTargetWidth ?? 100);
+
+    // Correct Fitts's Law: ID = log2(D/W + 1)
     const ID = Math.log2(D / W + 1);
+
+    // Fitts's Law: MT = a + b·ID (in seconds)
+    // Convert to milliseconds and use for timing
+    const predictedMT = (this.config.fittsA + this.config.fittsB * ID) * 1000;
+    const adjustedMT = predictedMT * this.config.fatigueMultiplier * (0.95 + Math.random() * 0.1);
 
     let complexityMultiplier = 1.0;
     switch (this.config.curveComplexity) {
@@ -1272,7 +1363,10 @@ class ShyMouse {
         complexityMultiplier = 1.0;
     }
 
-    let baseNumPoints = Math.max(15, Math.round(12 * ID * complexityMultiplier));
+    // Calculate number of points based on movement time and polling rate
+    // MT / avgPollingInterval = approximate number of points
+    let baseNumPoints = Math.round(adjustedMT / this.config.typicalPollingInterval);
+    baseNumPoints = Math.max(15, Math.round(baseNumPoints * complexityMultiplier));
     baseNumPoints = this.applyFatigue(baseNumPoints);
     const numPoints = options.numPoints ?? baseNumPoints;
 
@@ -1293,6 +1387,9 @@ class ShyMouse {
     const jitterStdDev = baseJitter * this.config.fatigueMultiplier;
     const points = [];
 
+    // Generate realistic velocity profile (bell curve for ballistic movement)
+    const velocityProfile = this.generateVelocityProfile(numPoints, D);
+
     for (let i = 1; i <= numPoints; i++) {
       const linearT = i / numPoints;
       const easedT = this.multiLayerEasing(linearT, D);
@@ -1304,21 +1401,37 @@ class ShyMouse {
         primaryControls.p3
       );
 
-      // Micro-corrections
+      // Micro-corrections with fractal depth
       if (Math.random() < this.config.microCorrectionFrequency && linearT > 0.2 && linearT < 0.9) {
         const correctionAngle = Math.random() * Math.PI * 2;
         const correctionMagnitude = this.randomGaussian(0, 4 * this.config.fatigueMultiplier);
-        point.x += Math.cos(correctionAngle) * correctionMagnitude;
-        point.y += Math.sin(correctionAngle) * correctionMagnitude;
+
+        // Add fractal sub-movements (multiple scales)
+        for (let depth = 0; depth < this.config.fractalDepth; depth++) {
+          const scale = Math.pow(0.5, depth);
+          const fractalNoise = this.perlinNoise(
+            i * 0.1 * (depth + 1),
+            linearT * 10 * (depth + 1),
+            this.motionState.perlinSeed + depth
+          );
+          point.x += Math.cos(correctionAngle) * correctionMagnitude * scale + fractalNoise * scale;
+          point.y += Math.sin(correctionAngle) * correctionMagnitude * scale + fractalNoise * scale;
+        }
       }
 
-      // Progressive jitter
+      // Progressive jitter with velocity-dependent noise
       const progressFactor = 1 - easedT;
       const distanceToEnd = progressFactor * D;
-      const adaptiveJitter = jitterStdDev * Math.min(1.5, distanceToEnd / 70);
+      const velocityInfluence = velocityProfile[i - 1];
+      const adaptiveJitter = jitterStdDev * Math.min(1.5, distanceToEnd / 70) * (0.8 + velocityInfluence * 0.4);
 
-      point.x += this.randomGaussian(0, adaptiveJitter);
-      point.y += this.randomGaussian(0, adaptiveJitter);
+      // Multi-scale noise (combining Gaussian and Perlin)
+      const gaussianNoise = this.randomGaussian(0, adaptiveJitter);
+      const perlinNoiseX = this.perlinNoise(i * 0.15, 0, this.motionState.perlinSeed) * adaptiveJitter * 0.3;
+      const perlinNoiseY = this.perlinNoise(0, i * 0.15, this.motionState.perlinSeed + 1) * adaptiveJitter * 0.3;
+
+      point.x += gaussianNoise + perlinNoiseX;
+      point.y += gaussianNoise + perlinNoiseY;
 
       // Attention errors
       if (this.config.attentionSpan < 0.95) {
@@ -1360,8 +1473,45 @@ class ShyMouse {
     return {
       points: result.points,
       finalPos: result.finalPos,
-      targetDrift: targetDrift
+      targetDrift: targetDrift,
+      velocityProfile: velocityProfile
     };
+  }
+
+  /**
+   * Generate realistic velocity profile (bell curve for ballistic movements)
+   * Based on research: human movements follow asymmetric bell-shaped velocity profiles
+   */
+  generateVelocityProfile(numPoints, distance) {
+    const profile = [];
+    const peakPosition = 0.40 + Math.random() * 0.15; // Peak velocity at 40-55% of movement
+
+    for (let i = 0; i < numPoints; i++) {
+      const t = i / numPoints;
+
+      // Asymmetric Gaussian (skewed bell curve)
+      let velocity;
+      if (t < peakPosition) {
+        // Acceleration phase (slightly faster rise)
+        const normT = t / peakPosition;
+        velocity = Math.exp(-Math.pow((normT - 1) * 2.2, 2));
+      } else {
+        // Deceleration phase (slower, more controlled)
+        const normT = (t - peakPosition) / (1 - peakPosition);
+        velocity = Math.exp(-Math.pow(normT * 2.8, 2));
+      }
+
+      // Add natural variation with Perlin noise
+      const noiseVariation = this.perlinNoise(i * 0.1, 0, this.motionState.perlinSeed + 100);
+      velocity *= (1 + noiseVariation * 0.15);
+
+      // Minimum velocity (never completely stop in the middle)
+      velocity = Math.max(0.1, velocity);
+
+      profile.push(velocity);
+    }
+
+    return profile;
   }
 
   /**
@@ -1406,30 +1556,43 @@ class ShyMouse {
   }
 
   /**
-   * Multi-layer easing
+   * Multi-layer easing with advanced entropy (2025+ enhanced)
    */
   multiLayerEasing(t, distance) {
     let eased = t < 0.5
       ? 4 * t * t * t
       : 1 - Math.pow(-2 * t + 2, 3) / 2;
 
-    // Micro-variations
+    // Micro-variations with fractal noise
     const microVariation = (Math.random() - 0.5) * 0.02;
-    eased += microVariation;
+    const fractalVariation = this.perlinNoise(t * 5, distance * 0.01, this.motionState.perlinSeed) * 0.015;
+    eased += microVariation + fractalVariation;
 
-    // Tremor (high-frequency noise)
-    const tremor = Math.sin(t * Math.PI * 8 + Math.random()) * 0.008;
+    // Tremor (high-frequency noise) with temporal correlation
+    const tremorPhase = Date.now() * 0.01 + t * Math.PI * 8;
+    const tremor = Math.sin(tremorPhase) * 0.008 * this.motionState.temporalCorrelation;
     eased += tremor;
 
-    // Attention lapses
-    if (this.config.attentionSpan < 0.92 && Math.random() < 0.05) {
-      const lapse = (Math.random() - 0.5) * 0.03;
+    // Attention lapses with entropy-based probability
+    const currentEntropy = this.motionState.entropyAccumulator % 1;
+    const lapseProb = (1 - this.config.attentionSpan) * (1 + currentEntropy) * 0.1;
+    if (Math.random() < lapseProb) {
+      const lapse = this.randomGaussian(0, 0.025);
       eased += lapse;
+      this.log('Attention lapse at t=', t.toFixed(3));
     }
 
-    // Distance-based hesitation
-    if (distance > 500 && t > 0.35 && t < 0.65 && Math.random() < 0.04) {
+    // Distance-based hesitation with Fitts's Law influence
+    const ID = Math.log2(distance / 100 + 1);
+    const hesitationProb = 0.04 * (ID / 5); // Higher ID = more difficult = more hesitation
+    if (distance > 500 && t > 0.35 && t < 0.65 && Math.random() < hesitationProb) {
       eased *= 0.92;
+    }
+
+    // Sub-pixel precision errors (humans can't be perfectly precise)
+    if (t > 0.8) {
+      const precisionError = this.randomGaussian(0, 0.008 * this.config.fatigueMultiplier);
+      eased += precisionError;
     }
 
     return this.clamp(eased, 0, 1);
@@ -1602,6 +1765,76 @@ class ShyMouse {
   }
 
   /**
+   * Perlin noise for natural entropy (fractal-like randomness)
+   */
+  perlinNoise(x, y, seed) {
+    const hash = (n) => {
+      n = Math.sin(n + seed) * 43758.5453123;
+      return n - Math.floor(n);
+    };
+
+    const xi = Math.floor(x);
+    const yi = Math.floor(y);
+    const xf = x - xi;
+    const yf = y - yi;
+
+    const fade = (t) => t * t * t * (t * (t * 6 - 15) + 10);
+
+    const lerp = (a, b, t) => a + t * (b - a);
+
+    const grad = (h, x, y) => {
+      const v = (h & 1) === 0 ? x : y;
+      return ((h & 2) === 0 ? -v : v);
+    };
+
+    const a = hash(xi + hash(yi));
+    const b = hash(xi + 1 + hash(yi));
+    const c = hash(xi + hash(yi + 1));
+    const d = hash(xi + 1 + hash(yi + 1));
+
+    const u = fade(xf);
+    const v = fade(yf);
+
+    const x1 = lerp(grad(a * 255, xf, yf), grad(b * 255, xf - 1, yf), u);
+    const x2 = lerp(grad(c * 255, xf, yf - 1), grad(d * 255, xf - 1, yf - 1), u);
+
+    return lerp(x1, x2, v);
+  }
+
+  /**
+   * Calculate realistic movement entropy (measure of unpredictability)
+   */
+  calculateEntropy(points) {
+    if (points.length < 3) return 0.5;
+
+    const velocities = [];
+    for (let i = 1; i < points.length; i++) {
+      const dx = points[i].x - points[i - 1].x;
+      const dy = points[i].y - points[i - 1].y;
+      const v = Math.sqrt(dx * dx + dy * dy);
+      velocities.push(v);
+    }
+
+    // Calculate entropy using velocity distribution
+    const mean = velocities.reduce((a, b) => a + b, 0) / velocities.length;
+    const variance = velocities.reduce((sum, v) => sum + Math.pow(v - mean, 2), 0) / velocities.length;
+    const entropy = Math.log2(1 + variance / (mean + 1));
+
+    return Math.min(1, entropy / 3); // Normalize to 0-1
+  }
+
+  /**
+   * Smooth jerk calculation (third derivative)
+   */
+  calculateSmoothJerk(prevJerk, targetJerk) {
+    const smoothness = this.config.jerkSmoothness;
+    return {
+      x: prevJerk.x * smoothness + targetJerk.x * (1 - smoothness),
+      y: prevJerk.y * smoothness + targetJerk.y * (1 - smoothness),
+    };
+  }
+
+  /**
    * Human reaction delay
    */
   async humanReactionDelay() {
@@ -1751,7 +1984,19 @@ class ShyMouse {
     this.moveHistory = [];
     this.lastPos = null;
     this.invalidateViewportCache();
-    this.log('State reset complete');
+
+    // Reset advanced motion state (2025+ enhancement)
+    this.motionState = {
+      lastVelocity: { x: 0, y: 0 },
+      lastAcceleration: { x: 0, y: 0 },
+      lastJerk: { x: 0, y: 0 },
+      temporalCorrelation: 0.5,
+      entropyAccumulator: 0,
+      perlinSeed: Math.random() * 10000,
+      pollingPhase: Math.random(),
+    };
+
+    this.log('State reset complete (with advanced motion state)');
   }
 }
 
